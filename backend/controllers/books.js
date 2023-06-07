@@ -87,6 +87,47 @@ exports.deleteBook = (req, res, next) => {
     });
 };
 
+exports.rateBook = (req, res, next) => {
+  const user = req.body.userId;
+  if (user !== req.auth.userId) {
+    res.status(401).json({ message: "Non autorisé" });
+  } else {
+    Book.findOne({ _id: req.params.id })
+      .then((book) => {
+        if (book.ratings.find((rating) => rating.userId === user)) {
+          res.status(401).json({ message: "Livre déjà noté" });
+        } else {
+          const newRating = {
+            userId: user,
+            grade: req.body.rating,
+            _id: req.body._id,
+          };
+          const updatedRatings = [...book.ratings, newRating];
+          function calcAverageRating(ratings) {
+            const sumRatings = ratings.reduce(
+              (total, rate) => total + rate.grade,
+              0
+            );
+            const average = sumRatings / ratings.length;
+            return parseFloat(average.toFixed(2));
+          }
+          const updateAverageRating = calcAverageRating(updatedRatings);
+          Book.findOneAndUpdate(
+            { _id: req.params.id, "ratings.userId": { $ne: user } },
+            {
+              $push: { ratings: newRating },
+              averageRating: updateAverageRating,
+            },
+            { new: true }
+          )
+            .then((updatedBook) => res.status(201).json(updatedBook))
+            .catch((error) => res.status(401).json({ error }));
+        }
+      })
+      .catch((error) => res.status(401).json({ error }));
+  }
+};
+
 exports.getBestRatingBook = (req, res, next) => {
   Book.find()
     .sort({ averageRating: -1 })
