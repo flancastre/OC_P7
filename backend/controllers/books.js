@@ -9,14 +9,14 @@ exports.createBook = (req, res, next) => {
     ...bookObject,
     userId: req.auth.userId,
     imageUrl: `${req.protocol}://${req.get("host")}/images/${
-      req.file.filename
-    }`,
+      req.file.filename.split(".")[0]
+    }optimized.webp`,
+    averageRating: bookObject.ratings[0].grade,
   });
-
   book
     .save()
     .then(() => {
-      res.status(201).json({ message: "Objet enregistré !" });
+      res.status(201).json({ message: "Livre enregistré!" });
     })
     .catch((error) => {
       res.status(400).json({ error });
@@ -42,28 +42,27 @@ exports.modifyBook = (req, res, next) => {
     ? {
         ...JSON.parse(req.body.book),
         imageUrl: `${req.protocol}://${req.get("host")}/images/${
-          req.file.filename
-        }`,
+          req.file.filename.split(".")[0]
+        }optimized.webp`,
       }
     : { ...req.body };
-
   delete bookObject._userId;
   Book.findOne({ _id: req.params.id })
     .then((book) => {
       if (book.userId != req.auth.userId) {
-        res.status(401).json({ message: "Not authorized" });
-      } else {
-        Book.updateOne(
-          { _id: req.params.id },
-          { ...bookObject, _id: req.params.id }
-        )
-          .then(() => res.status(200).json({ message: "Objet modifié!" }))
-          .catch((error) => res.status(401).json({ error }));
+        res.status(403).json({ message: "403: unauthorized request" });
+      } else if (req.file) {
+        const filename = book.imageUrl.split("/images")[1];
+        fs.unlink(`images/${filename}`, () => {});
       }
+      Book.updateOne(
+        { _id: req.params.id },
+        { ...bookObject, _id: req.params.id }
+      )
+        .then(res.status(200).json({ message: "Livre modifié! " }))
+        .catch((error) => res.status(400).json({ error }));
     })
-    .catch((error) => {
-      res.status(400).json({ error });
-    });
+    .catch((error) => res.status(400).json({ error }));
 };
 
 exports.deleteBook = (req, res, next) => {
@@ -94,13 +93,11 @@ exports.rateBook = (req, res, next) => {
   } else {
     Book.findOne({ _id: req.params.id })
       .then((book) => {
-        if (book.ratings.find((rating) => rating.userId === user)) {
-          res.status(401).json({ message: "Livre déjà noté" });
-        } else {
+        if (!book.ratings.find((rating) => rating.userId === user)) {
+          // res.status(401).json({ message: "Livre déjà noté" });
           const newRating = {
             userId: user,
             grade: req.body.rating,
-            _id: req.body._id,
           };
           const updatedRatings = [...book.ratings, newRating];
           function calcAverageRating(ratings) {
